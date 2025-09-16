@@ -1,8 +1,9 @@
-import { Crown, Star, Gem, Users } from "lucide-react";
+import { Crown, Star, Gem, Users, Minus } from "lucide-react";
 import classicMustache from "@/assets/mustaches/classic.svg";
 import handlebarMustache from "@/assets/mustaches/handlebar.svg";
 import victorianMustache from "@/assets/mustaches/victorian.svg";
 import walrusMustache from "@/assets/mustaches/walrus.svg";
+import pencilThinMustache from "@/assets/mustaches/pencil-thin.svg";
 import type { MustacheStyle } from "./photo-editor";
 
 const mustacheStyles: MustacheStyle[] = [
@@ -30,6 +31,12 @@ const mustacheStyles: MustacheStyle[] = [
     icon: Users,
     svgPath: walrusMustache,
   },
+  {
+    id: "pencil-thin",
+    name: "Pencil Thin",
+    icon: Minus,
+    svgPath: pencilThinMustache,
+  },
 ];
 
 interface MustacheSelectorProps {
@@ -41,7 +48,7 @@ export default function MustacheSelector({ selectedMustache, onMustacheSelect }:
   return (
     <div data-testid="mustache-selector">
       <h4 className="font-medium text-foreground mb-3">Mustache Style</h4>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-5 gap-3">
         {mustacheStyles.map((mustache) => {
           const IconComponent = mustache.icon;
           const isSelected = selectedMustache?.id === mustache.id;

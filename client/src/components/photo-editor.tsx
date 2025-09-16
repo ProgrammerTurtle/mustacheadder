@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import FileUpload from "./file-upload";
 import MustacheSelector from "./mustache-selector";
+import MustacheAdjuster, { MustachePosition } from "./mustache-adjuster";
 import { loadFaceDetection, detectFaces } from "@/lib/face-detection";
 import { downloadImage } from "@/lib/image-processing";
 import { Download, RotateCcw } from "lucide-react";
@@ -22,6 +23,9 @@ export default function PhotoEditor() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [faces, setFaces] = useState<any[]>([]);
+  const [isManualMode, setIsManualMode] = useState(false);
+  const [mustachePositions, setMustachePositions] = useState<MustachePosition[]>([]);
+  const [originalImageDimensions, setOriginalImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const originalImageRef = useRef<HTMLImageElement>(null);
 
@@ -54,12 +58,21 @@ export default function PhotoEditor() {
       setOriginalImage(imageUrl);
       setProcessedImage(null);
       setFaces([]);
+      setOriginalImageDimensions(null);
+
+      // Load image to get dimensions
+      const img = new Image();
+      img.onload = () => {
+        setOriginalImageDimensions({ width: img.width, height: img.height });
+      };
+      img.src = imageUrl;
 
       if (isModelLoaded) {
         setIsProcessing(true);
         try {
           const detectedFaces = await detectFaces(imageUrl);
           setFaces(detectedFaces);
+          setMustachePositions(generateInitialPositions(detectedFaces));
           toast({
             title: `Found ${detectedFaces.length} face(s)`,
             description: "Select a mustache style to apply",
@@ -96,8 +109,17 @@ export default function PhotoEditor() {
       // Load and apply mustache SVG
       const mustacheImg = new Image();
       mustacheImg.onload = () => {
-        if (faces.length > 0) {
-          // Apply mustache to detected faces
+        if (isManualMode && mustachePositions.length > 0) {
+          // Apply mustache using manual positions
+          mustachePositions.forEach((position) => {
+            ctx.save();
+            ctx.translate(position.x + position.width / 2, position.y + position.height / 2);
+            ctx.rotate((position.rotation * Math.PI) / 180);
+            ctx.drawImage(mustacheImg, -position.width / 2, -position.height / 2, position.width, position.height);
+            ctx.restore();
+          });
+        } else if (faces.length > 0) {
+          // Apply mustache to detected faces (automatic mode)
           faces.forEach((face) => {
             const landmarks = face.landmarks;
             if (landmarks && landmarks.getMouth) {
@@ -118,7 +140,7 @@ export default function PhotoEditor() {
             }
           });
         } else {
-          // Default positioning for manual application
+          // Default positioning when no faces detected
           const mustacheWidth = img.width * 0.15;
           const mustacheHeight = mustacheWidth * 0.4;
           const mustacheX = img.width / 2 - mustacheWidth / 2;
@@ -136,7 +158,7 @@ export default function PhotoEditor() {
       mustacheImg.src = selectedMustache.svgPath;
     };
     img.src = originalImage;
-  }, [originalImage, selectedMustache, faces]);
+  }, [originalImage, selectedMustache, faces, isManualMode, mustachePositions]);
 
   useEffect(() => {
     if (originalImage && selectedMustache) {
@@ -154,11 +176,51 @@ export default function PhotoEditor() {
     }
   };
 
+  const generateInitialPositions = useCallback((detectedFaces: any[]) => {
+    return detectedFaces.map((face, index) => {
+      const landmarks = face.landmarks;
+      if (landmarks && landmarks.getMouth) {
+        const mouth = landmarks.getMouth();
+        const mouthCenter = mouth.reduce((acc: any, point: any) => ({
+          x: acc.x + point.x,
+          y: acc.y + point.y
+        }), { x: 0, y: 0 });
+        mouthCenter.x /= mouth.length;
+        mouthCenter.y /= mouth.length;
+        
+        const mustacheWidth = face.detection.box.width * 0.6;
+        const mustacheHeight = mustacheWidth * 0.4;
+        const mustacheX = mouthCenter.x - mustacheWidth / 2;
+        const mustacheY = mouthCenter.y - mustacheHeight * 0.8;
+        
+        return {
+          x: mustacheX,
+          y: mustacheY,
+          width: mustacheWidth,
+          height: mustacheHeight,
+          rotation: 0,
+          faceIndex: index,
+        };
+      }
+      return {
+        x: 200,
+        y: 200,
+        width: 60,
+        height: 24,
+        rotation: 0,
+        faceIndex: index,
+      };
+    });
+  }, []);
+
   const handleReset = () => {
     setOriginalImage(null);
     setProcessedImage(null);
     setSelectedMustache(null);
     setFaces([]);
+    setIsManualMode(false);
+    setMustachePositions([]);
+    setOriginalImageDimensions(null);
   };
 
   return (
@@ -219,6 +281,17 @@ export default function PhotoEditor() {
           <MustacheSelector
             selectedMustache={selectedMustache}
             onMustacheSelect={setSelectedMustache}
+          />
+
+          {/* Manual Adjustment Controls */}
+          <MustacheAdjuster
+            imageUrl={originalImage}
+            mustachePositions={mustachePositions}
+            onPositionsChange={setMustachePositions}
+            isManualMode={isManualMode}
+            onManualModeChange={setIsManualMode}
+            selectedMustache={selectedMustache}
+            originalImageDimensions={originalImageDimensions || undefined}
           />
 
           {/* Action Buttons */}
