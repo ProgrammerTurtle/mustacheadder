@@ -1,0 +1,26 @@
+<svg viewBox="0 0 220 100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="handlebarGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2d2d2d;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1a1a1a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0d0d0d;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Main mustache body -->
+  <ellipse cx="110" cy="50" rx="70" ry="20" fill="url(#handlebarGradient)" />
+  
+  <!-- Left handlebar curl -->
+  <path d="M40 50 Q20 30 25 15 Q30 5 45 20 Q50 40 50 50" 
+        fill="url(#handlebarGradient)" stroke="#404040" stroke-width="1" />
+  
+  <!-- Right handlebar curl -->
+  <path d="M180 50 Q200 30 195 15 Q190 5 175 20 Q170 40 170 50" 
+        fill="url(#handlebarGradient)" stroke="#404040" stroke-width="1" />
+  
+  <!-- Center dip -->
+  <ellipse cx="110" cy="45" rx="6" ry="4" fill="#f5f5f5" opacity="0.1" />
+  
+  <!-- Highlight -->
+  <ellipse cx="110" cy="42" rx="60" ry="6" fill="#404040" opacity="0.5" />
+</svg>

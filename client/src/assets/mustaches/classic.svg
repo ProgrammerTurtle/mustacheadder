@@ -1,0 +1,22 @@
+<svg viewBox="0 0 200 80" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="classicGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#2d2d2d;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#1a1a1a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0d0d0d;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Main mustache body -->
+  <ellipse cx="100" cy="40" rx="90" ry="25" fill="url(#classicGradient)" />
+  
+  <!-- Center dip -->
+  <ellipse cx="100" cy="35" rx="8" ry="5" fill="#f5f5f5" opacity="0.1" />
+  
+  <!-- Highlight for dimension -->
+  <ellipse cx="100" cy="30" rx="80" ry="8" fill="#404040" opacity="0.6" />
+  
+  <!-- Texture lines -->
+  <path d="M30 40 Q50 45 70 40" stroke="#404040" stroke-width="1" fill="none" opacity="0.4" />
+  <path d="M130 40 Q150 45 170 40" stroke="#404040" stroke-width="1" fill="none" opacity="0.4" />
+</svg>
