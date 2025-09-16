@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/hooks/use-toast";
 import FileUpload from "./file-upload";
 import MustacheSelector from "./mustache-selector";
+import AccessorySelector, { AccessoryStyle } from "./accessory-selector";
 import MustacheAdjuster, { MustachePosition } from "./mustache-adjuster";
 import { loadFaceDetection, detectFaces } from "@/lib/face-detection";
 import { downloadImage } from "@/lib/image-processing";
@@ -20,11 +21,13 @@ export default function PhotoEditor() {
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [selectedMustache, setSelectedMustache] = useState<MustacheStyle | null>(null);
+  const [selectedAccessory, setSelectedAccessory] = useState<AccessoryStyle | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isModelLoaded, setIsModelLoaded] = useState(false);
   const [faces, setFaces] = useState<any[]>([]);
   const [isManualMode, setIsManualMode] = useState(false);
   const [mustachePositions, setMustachePositions] = useState<MustachePosition[]>([]);
+  const [accessoryPositions, setAccessoryPositions] = useState<MustachePosition[]>([]);
   const [originalImageDimensions, setOriginalImageDimensions] = useState<{ width: number; height: number } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const originalImageRef = useRef<HTMLImageElement>(null);
@@ -92,8 +95,74 @@ export default function PhotoEditor() {
     reader.readAsDataURL(file);
   }, [isModelLoaded]);
 
-  const applyMustache = useCallback(async () => {
-    if (!originalImage || !selectedMustache || !canvasRef.current) return;
+  const generateInitialAccessoryPositions = useCallback((detectedFaces: any[], accessoryType: 'monocle' | 'top-hat' | 'bow-tie') => {
+    return detectedFaces.map((face, index) => {
+      const landmarks = face.landmarks;
+      let x = 200, y = 200, width = 60, height = 60;
+      
+      if (landmarks) {
+        const faceBox = face.detection.box;
+        
+        switch (accessoryType) {
+          case 'monocle':
+            // Position over right eye
+            if (landmarks.getRightEye) {
+              const rightEye = landmarks.getRightEye();
+              const eyeCenter = rightEye.reduce((acc: any, point: any) => ({
+                x: acc.x + point.x,
+                y: acc.y + point.y
+              }), { x: 0, y: 0 });
+              eyeCenter.x /= rightEye.length;
+              eyeCenter.y /= rightEye.length;
+              
+              width = faceBox.width * 0.25;
+              height = width;
+              x = eyeCenter.x - width / 2;
+              y = eyeCenter.y - height / 2;
+            }
+            break;
+            
+          case 'top-hat':
+            // Position above head
+            width = faceBox.width * 0.8;
+            height = width * 1.2;
+            x = faceBox.x + faceBox.width / 2 - width / 2;
+            y = faceBox.y - height * 0.8;
+            break;
+            
+          case 'bow-tie':
+            // Position below mouth/chin area
+            if (landmarks.getMouth) {
+              const mouth = landmarks.getMouth();
+              const mouthCenter = mouth.reduce((acc: any, point: any) => ({
+                x: acc.x + point.x,
+                y: acc.y + point.y
+              }), { x: 0, y: 0 });
+              mouthCenter.x /= mouth.length;
+              mouthCenter.y /= mouth.length;
+              
+              width = faceBox.width * 0.4;
+              height = width * 0.5;
+              x = mouthCenter.x - width / 2;
+              y = mouthCenter.y + height * 1.5;
+            }
+            break;
+        }
+      }
+      
+      return {
+        x,
+        y,
+        width,
+        height,
+        rotation: 0,
+        faceIndex: index,
+      };
+    });
+  }, []);
+
+  const applyOverlays = useCallback(async () => {
+    if (!originalImage || (!selectedMustache && !selectedAccessory) || !canvasRef.current) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
@@ -106,65 +175,135 @@ export default function PhotoEditor() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
 
-      // Load and apply mustache SVG
-      const mustacheImg = new Image();
-      mustacheImg.onload = () => {
-        if (isManualMode && mustachePositions.length > 0) {
-          // Apply mustache using manual positions
-          mustachePositions.forEach((position) => {
-            ctx.save();
-            ctx.translate(position.x + position.width / 2, position.y + position.height / 2);
-            ctx.rotate((position.rotation * Math.PI) / 180);
-            ctx.drawImage(mustacheImg, -position.width / 2, -position.height / 2, position.width, position.height);
-            ctx.restore();
+      let overlaysToApply = 0;
+      let appliedOverlays = 0;
+      const appliedItems: string[] = [];
+
+      const checkCompletion = () => {
+        appliedOverlays++;
+        if (appliedOverlays === overlaysToApply) {
+          setProcessedImage(canvas.toDataURL());
+          const itemsText = appliedItems.join(' and ');
+          toast({
+            title: `${itemsText} applied!`,
+            description: "Your distinguished photo is ready for download",
           });
-        } else if (faces.length > 0) {
-          // Apply mustache to detected faces (automatic mode)
-          faces.forEach((face) => {
-            const landmarks = face.landmarks;
-            if (landmarks && landmarks.getMouth) {
-              const mouth = landmarks.getMouth();
-              const mouthCenter = mouth.reduce((acc: any, point: any) => ({
-                x: acc.x + point.x,
-                y: acc.y + point.y
-              }), { x: 0, y: 0 });
-              mouthCenter.x /= mouth.length;
-              mouthCenter.y /= mouth.length;
-
-              const mustacheWidth = face.detection.box.width * 0.6;
-              const mustacheHeight = mustacheWidth * 0.4;
-              const mustacheX = mouthCenter.x - mustacheWidth / 2;
-              const mustacheY = mouthCenter.y - mustacheHeight * 0.8;
-
-              ctx.drawImage(mustacheImg, mustacheX, mustacheY, mustacheWidth, mustacheHeight);
-            }
-          });
-        } else {
-          // Default positioning when no faces detected
-          const mustacheWidth = img.width * 0.15;
-          const mustacheHeight = mustacheWidth * 0.4;
-          const mustacheX = img.width / 2 - mustacheWidth / 2;
-          const mustacheY = img.height * 0.55;
-
-          ctx.drawImage(mustacheImg, mustacheX, mustacheY, mustacheWidth, mustacheHeight);
         }
-
-        setProcessedImage(canvas.toDataURL());
-        toast({
-          title: "Mustache applied!",
-          description: "Your distinguished photo is ready for download",
-        });
       };
-      mustacheImg.src = selectedMustache.svgPath;
+
+      // Apply mustache if selected
+      if (selectedMustache) {
+        overlaysToApply++;
+        appliedItems.push('Mustache');
+        
+        const mustacheImg = new Image();
+        mustacheImg.onload = () => {
+          if (isManualMode && mustachePositions.length > 0) {
+            // Apply mustache using manual positions
+            mustachePositions.forEach((position) => {
+              ctx.save();
+              ctx.translate(position.x + position.width / 2, position.y + position.height / 2);
+              ctx.rotate((position.rotation * Math.PI) / 180);
+              ctx.drawImage(mustacheImg, -position.width / 2, -position.height / 2, position.width, position.height);
+              ctx.restore();
+            });
+          } else if (faces.length > 0) {
+            // Apply mustache to detected faces (automatic mode)
+            faces.forEach((face) => {
+              const landmarks = face.landmarks;
+              if (landmarks && landmarks.getMouth) {
+                const mouth = landmarks.getMouth();
+                const mouthCenter = mouth.reduce((acc: any, point: any) => ({
+                  x: acc.x + point.x,
+                  y: acc.y + point.y
+                }), { x: 0, y: 0 });
+                mouthCenter.x /= mouth.length;
+                mouthCenter.y /= mouth.length;
+
+                const mustacheWidth = face.detection.box.width * 0.6;
+                const mustacheHeight = mustacheWidth * 0.4;
+                const mustacheX = mouthCenter.x - mustacheWidth / 2;
+                const mustacheY = mouthCenter.y - mustacheHeight * 0.8;
+
+                ctx.drawImage(mustacheImg, mustacheX, mustacheY, mustacheWidth, mustacheHeight);
+              }
+            });
+          } else {
+            // Default positioning when no faces detected
+            const mustacheWidth = img.width * 0.15;
+            const mustacheHeight = mustacheWidth * 0.4;
+            const mustacheX = img.width / 2 - mustacheWidth / 2;
+            const mustacheY = img.height * 0.55;
+
+            ctx.drawImage(mustacheImg, mustacheX, mustacheY, mustacheWidth, mustacheHeight);
+          }
+          checkCompletion();
+        };
+        mustacheImg.src = selectedMustache.svgPath;
+      }
+
+      // Apply accessory if selected
+      if (selectedAccessory) {
+        overlaysToApply++;
+        appliedItems.push(selectedAccessory.name);
+        
+        const accessoryImg = new Image();
+        accessoryImg.onload = () => {
+          if (isManualMode && accessoryPositions.length > 0) {
+            // Apply accessory using manual positions
+            accessoryPositions.forEach((position) => {
+              ctx.save();
+              ctx.translate(position.x + position.width / 2, position.y + position.height / 2);
+              ctx.rotate((position.rotation * Math.PI) / 180);
+              ctx.drawImage(accessoryImg, -position.width / 2, -position.height / 2, position.width, position.height);
+              ctx.restore();
+            });
+          } else if (faces.length > 0) {
+            // Apply accessory to detected faces using positioning logic
+            const accessoryPositions = generateInitialAccessoryPositions(faces, selectedAccessory.id as 'monocle' | 'top-hat' | 'bow-tie');
+            accessoryPositions.forEach((position) => {
+              ctx.drawImage(accessoryImg, position.x, position.y, position.width, position.height);
+            });
+          } else {
+            // Default accessory positioning when no faces detected
+            let accessoryWidth = img.width * 0.1;
+            let accessoryHeight = accessoryWidth;
+            let accessoryX = img.width * 0.7;
+            let accessoryY = img.height * 0.3;
+
+            // Adjust based on accessory type
+            if (selectedAccessory.id === 'top-hat') {
+              accessoryWidth = img.width * 0.2;
+              accessoryHeight = accessoryWidth * 1.2;
+              accessoryX = img.width / 2 - accessoryWidth / 2;
+              accessoryY = img.height * 0.1;
+            } else if (selectedAccessory.id === 'bow-tie') {
+              accessoryWidth = img.width * 0.12;
+              accessoryHeight = accessoryWidth * 0.5;
+              accessoryX = img.width / 2 - accessoryWidth / 2;
+              accessoryY = img.height * 0.7;
+            }
+
+            ctx.drawImage(accessoryImg, accessoryX, accessoryY, accessoryWidth, accessoryHeight);
+          }
+          checkCompletion();
+        };
+        accessoryImg.src = selectedAccessory.svgPath;
+      }
+
+      // If no overlays to apply, still update the canvas
+      if (overlaysToApply === 0) {
+        setProcessedImage(canvas.toDataURL());
+      }
     };
     img.src = originalImage;
-  }, [originalImage, selectedMustache, faces, isManualMode, mustachePositions]);
+  }, [originalImage, selectedMustache, selectedAccessory, faces, isManualMode, mustachePositions, accessoryPositions]);
 
   useEffect(() => {
-    if (originalImage && selectedMustache) {
-      applyMustache();
+    if (originalImage && (selectedMustache || selectedAccessory)) {
+      applyOverlays();
     }
-  }, [originalImage, selectedMustache, applyMustache]);
+  }, [originalImage, selectedMustache, selectedAccessory, applyOverlays]);
 
   const handleDownload = () => {
     if (processedImage) {
@@ -217,9 +356,11 @@ export default function PhotoEditor() {
     setOriginalImage(null);
     setProcessedImage(null);
     setSelectedMustache(null);
+    setSelectedAccessory(null);
     setFaces([]);
     setIsManualMode(false);
     setMustachePositions([]);
+    setAccessoryPositions([]);
     setOriginalImageDimensions(null);
   };
 
@@ -281,6 +422,12 @@ export default function PhotoEditor() {
           <MustacheSelector
             selectedMustache={selectedMustache}
             onMustacheSelect={setSelectedMustache}
+          />
+
+          {/* Accessory Selection */}
+          <AccessorySelector
+            selectedAccessory={selectedAccessory}
+            onAccessorySelect={setSelectedAccessory}
           />
 
           {/* Manual Adjustment Controls */}
